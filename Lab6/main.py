@@ -1,4 +1,5 @@
 # Jacky Chen, Mandy Chokry, Angel Hernandez Vega, Nathan Leung
+# Lab 6, Program 2 & 3: Closest to Center ROIs and Angles of Deflection
 
 
 import csi

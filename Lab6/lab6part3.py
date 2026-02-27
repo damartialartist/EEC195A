@@ -1,4 +1,5 @@
 # Jacky Chen, Mandy Chokry, Angel Hernandez Vega, Nathan Leung
+# Lab 6, Part 3: Line Detecion and Pulse Width Modulation
 
 import sensor
 import image
@@ -110,7 +111,7 @@ def blob_angle(blobs: [None | image.Blob]) -> float | None:
 
 while True:
     clock.tick()
-    img = sensor.snapshot()  # Uses standard hardware-synced capture
+    img = sensor.snapshot()
 
     blobs = findMiddleBlobs(img)
     drawMiddleBlobs(img, blobs)
@@ -124,16 +125,14 @@ while True:
     if deg:
         img.draw_string(20, 10, f"Tilt: {deg:.2f}", color=10, scale=1)
 
-    # --- PART 3: HARDWARE CONTROL LOGIC ---
-
-    # 1. Turn all LEDs off at the start of the frame
+    # Turn all LEDs off at the start of the frame
     red_LED.off()
     green_LED.off()
     blue_LED.off()
 
     print_counter += 1
 
-    # 2. Grab the blob closest to the car (the bottom ROI)
+    # Grab the blob closest to the car (the bottom ROI)
     bottom_blob = blobs[1] if len(blobs) > 1 else None
 
     if bottom_blob is None:

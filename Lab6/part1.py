@@ -1,5 +1,5 @@
 # Jacky Chen, Mandy Chokry, Angel Hernandez Vega, Nathan Leung
-
+# Lab 6, Part 2, Program 1: Multiple Blob Detection, Frame Rate Report, and LED Blinking
 
 import csi
 import image

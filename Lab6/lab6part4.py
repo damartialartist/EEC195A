@@ -39,9 +39,7 @@ while True:
     if line:
         img.draw_line(line.line(), color=127)
 
-        # 1. Calculate Deflection Angle
-        # We always assume the car is traveling from the bottom of the frame to the top.
-        # So we figure out which endpoint is the "bottom" (highest Y value)
+        # Calculate Deflection Angle
         if line.y1() > line.y2():
             bottom_x, bottom_y = line.x1(), line.y1()
             top_x, top_y = line.x2(), line.y2()
@@ -50,14 +48,12 @@ while True:
             top_x, top_y = line.x1(), line.y1()
 
         dx = top_x - bottom_x
-        # We flip dy because the Y-axis increases as you go down the screen,
-        # but standard math assumes Y increases as you go up.
         dy = bottom_y - top_y
 
         # Calculate angle relative to the Y-axis (Straight up = 0 degrees)
         deflection_angle = math.degrees(math.atan2(dx, dy))
 
-        # 2. Rule of Thirds Logic (QQQVGA width = 80)
+        # Rule of Thirds Logic (QQQVGA width = 80)
         x1, x2 = line.x1(), line.x2()
 
         position_string = "None"
@@ -82,7 +78,7 @@ while True:
             position_string = "None"
             # LEDs remain off as set at the top of the loop
 
-        # 3. Serial Terminal Output (throttled to save FPS)
+        # Serial Terminal Output (throttled to save FPS)
         print_counter += 1
         if print_counter >= 20:
             print(f"FPS: {clock.fps():.1f} | {deflection_angle:.2f} Degrees, \"{position_string}\"")
