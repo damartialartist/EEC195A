@@ -24,6 +24,7 @@ pwmServo = tim.channel(2, Timer.PWM, pin=Pin("P8"), pulse_width=0)
 def usToTicks(us: float) -> int:
     return int((us / 10000.0) * 19200)
 
+
 # threshold for white blob
 thresholds = (180, 255)
 
