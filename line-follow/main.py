@@ -165,14 +165,14 @@ def pid_ctrl(offset, angle, previous_error, integral, dt):
     e_off = -1 * offset / 80
     e_ang = -1 * angle / 45
     prop = kpo * e_off + kpa * e_ang
-    integral += error * dt
-    derivative = (error - previous_error) / dt
+    integral += e_off * dt
+    derivative = (e_off - previous_error) / dt
     control = prop + ki * integral + kd * derivative
     return control
 
 while True:
     clock.tick()
-    img = csi0.snapshot().binary([THRESHOLD]) if BINARY_VISIBLE else sensor.snapshot()
+    img = csi0.snapshot().binary([THRESHOLD]) if BINARY_VISIBLE else csi0.snapshot()
 
     line = img.get_regression([(255, 255) if BINARY_VISIBLE else THRESHOLD], robust=True)
 
