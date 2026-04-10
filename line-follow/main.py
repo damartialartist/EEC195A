@@ -4,7 +4,7 @@ import csi
 import image
 import time
 import math
-from ulab import numpy as np
+
 from pyb import LED, Pin, Timer
 
 # Classes --------------------
