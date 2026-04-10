@@ -5,14 +5,16 @@ import image
 import time
 import math
 
-from pyb import LED, Pin, Timer
+from pyb import Pin, Timer
 
 # Classes --------------------
+
 
 class BlobMeasured():
     def __init__(self, xoff, deg):
         self.xoff = xoff
         self.deg = deg
+
 
 class Car():
     def msToTicks(self, ms):
@@ -20,7 +22,7 @@ class Car():
 
     def __init__(self):
         # Modes
-        self.FULL_SPEED_REVERSE = self.RIGHT  = self.msToTicks(1.1)
+        self.FULL_SPEED_REVERSE = self.RIGHT = self.msToTicks(1.1)
         self.STRAIGHT = self.BRAKE = self.msToTicks(1.5)
         self.FULL_SPEED_FORWARD = self.LEFT = self.msToTicks(1.9)
         self.OFF = 0
@@ -30,7 +32,6 @@ class Car():
         self.tim = Timer(4, freq=100)
         self.pwmDCPos = self.tim.channel(1, Timer.PWM, pin=Pin("P7"), pulse_width=0)
         self.pwmServo = self.tim.channel(2, Timer.PWM, pin=Pin("P8"), pulse_width=0)
-
 
     def Steer(self, mode, percentage=100):
         modifier = self.msToTicks((0.4 * (1-percentage/100)))
@@ -44,8 +45,7 @@ class Car():
 
         self.pwmServo.pulse_width(int(width))
 
-
-    def Throttle(self, mode, percentage = 100):
+    def Throttle(self, mode, percentage=100):
         modifier = self.msToTicks((0.4 * (1-percentage/100)))
 
         if (mode == self.FULL_SPEED_REVERSE):
@@ -77,13 +77,14 @@ img_middle_x = img_width // 2
 
 # Blobs
 thresholds = (180, 255)
-ROIs = (0, 0, 160, 10, 0.5) # x y w h (weight)
+ROIs = (0, 0, 160, 10, 0.5)  # x y w h (weight)
 
 
 THRESHOLD = (170, 255)
 BINARY_VISIBLE = True
 
 clock = time.clock()
+
 
 def findTopBlob(img: csi.image) -> None | image.Blob:
     threshold_list = [thresholds]
@@ -102,7 +103,6 @@ def findTopBlob(img: csi.image) -> None | image.Blob:
 
 def drawTopBlob(img: csi.image, blob: [None | image.Blob]) -> None:
 
-
     if blob is None:
         return
     if blob.elongation() > 0.5:
@@ -118,7 +118,6 @@ def drawTopBlob(img: csi.image, blob: [None | image.Blob]) -> None:
         size=40,
         color=127,
     )
-
 
     return
 
@@ -136,24 +135,26 @@ def findBlobErr(blob):
 
 deg = 0
 
-def printErr(blobErr : BlobMeasured):
+
+def printErr(blobErr: BlobMeasured):
     if blobErr is None:
         return
 
     img.draw_string(20, 10, f"Tilt: {blobErr.deg:.2f}", color=0, scale=1)
     if blobErr.deg < -5:
-        img.draw_string(20, 20, f"Turn Left", color=0, scale=1)
+        img.draw_string(20, 20, "Turn Left", color=0, scale=1)
     elif blobErr.deg > 5:
-        img.draw_string(20, 20, f"Turn Right", color=0, scale=1)
+        img.draw_string(20, 20, "Turn Right", color=0, scale=1)
     else:
-        img.draw_string(20, 20, f"Straight", color=0, scale=1)
+        img.draw_string(20, 20, "Straight", color=0, scale=1)
 
     if blobErr.xoff < -10:
-        img.draw_string(20, 30, f"Shift Left", color=0, scale=1)
+        img.draw_string(20, 30, "Shift Left", color=0, scale=1)
     elif blobErr.xoff > 10:
-        img.draw_string(20, 30, f"Shift Right", color=0, scale=1)
+        img.draw_string(20, 30, "Shift Right", color=0, scale=1)
     else:
-        img.draw_string(20, 30, f"No Shift", color=0, scale=1)
+        img.draw_string(20, 30, "No Shift", color=0, scale=1)
+
 
 def pid_ctrl(offset, angle, previous_error, integral, dt):
     # define ctrller coeffs
@@ -162,13 +163,14 @@ def pid_ctrl(offset, angle, previous_error, integral, dt):
     kd = 0
     ki = 0
     # normalize input errors; desired offset and angle are both 0
-    e_off = -1 * offset / 80
-    e_ang = -1 * angle / 45
+    e_off = -1 * offset / 40  # range -40 to 40
+    e_ang = -1 * angle / 90
     prop = kpo * e_off + kpa * e_ang
     integral += e_off * dt
     derivative = (e_off - previous_error) / dt
     control = prop + ki * integral + kd * derivative
     return control
+
 
 while True:
     clock.tick()
@@ -186,7 +188,7 @@ while True:
         drawTopBlob(img, blobs)
         blobErr = findBlobErr(blobs)
 
-    #printErr(blobErr)
+    # printErr(blobErr)
 
     if line:
         img.draw_line(line.line(), color=127)
@@ -214,16 +216,13 @@ while True:
         if x1 < 25 and x2 < 25:
             position_string = "Left"
 
-
         # Check if both endpoints are fully in the right region
         elif x1 > 55 and x2 > 55:
             position_string = "Right"
 
-
         # Check if both endpoints are fully in the center region
         elif 25 <= x1 <= 55 and 25 <= x2 <= 55:
             position_string = "Center"
-
 
         # If the endpoints fall in different regions, the line spans multiple regions
         else:
@@ -231,8 +230,7 @@ while True:
             # LEDs remain off as set at the top of the loop
 
         print(f"FPS: {clock.fps():.1f} | {deflection_angle:.2f} Degrees, \"{position_string}\"")
-
-
+        print(f"Bottom:{x1}, Top:{x2}")
         # Serial Terminal Output (throttled to save FPS)
 
     else:
@@ -241,4 +239,3 @@ while True:
     print(f"FPS: {clock.fps():.1f}")
 
     dt = 1 / clock.fps()
-
