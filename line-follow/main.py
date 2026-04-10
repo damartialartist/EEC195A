@@ -62,7 +62,7 @@ class Car():
 csi0 = csi.CSI()
 csi0.reset()
 csi0.pixformat(csi.GRAYSCALE)
-csi0.framesize(csi.QQVGA)
+csi0.framesize(csi.QQQVGA)
 csi0.auto_gain(False)
 csi0.auto_whitebal(False)
 img = csi0.snapshot()
