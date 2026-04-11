@@ -246,6 +246,7 @@ while True:
         # control, past_err, integral = pid_ctrl(offset, deflection_angle, past_err, integral, dt)
         # steer_percent = max(min(control, 1), -1) * 100
         # print(f"Control RetVal: {steer_percent}%")
+        # Car.Steer(Car, what to put here, steer_percent)
 
     else:
         print(f"FPS: {clock.fps():.1f} | No Line Detected")
@@ -253,5 +254,3 @@ while True:
     print(f"FPS: {clock.fps():.1f}")
 
     dt = 1 / clock.fps()
-
-    Car.Steer(Car, Car.msToTicks(Car, 1.1), 100)
