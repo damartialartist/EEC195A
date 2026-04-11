@@ -162,16 +162,23 @@ def pid_ctrl(offset, angle, previous_error, integral, dt):
     kpa = 0.5
     kd = 0
     ki = 0
+
     # normalize input errors; desired offset and angle are both 0
     e_off = -1 * offset / 40  # range -40 to 40
     e_ang = -1 * angle / 90
+
     prop = kpo * e_off + kpa * e_ang
     integral += e_off * dt
     derivative = (e_off - previous_error) / dt
-    control = prop + ki * integral + kd * derivative
-    return control
+
+    # control = prop + ki * integral + kd * derivative
+    control = prop
+    return control, e_off, integral
 
 
+past_err = 0
+integral = 0
+dt = 1 / clock.fps()
 while True:
     clock.tick()
     img = csi0.snapshot().binary([THRESHOLD]) if BINARY_VISIBLE else csi0.snapshot()
@@ -182,11 +189,11 @@ while True:
 
     img.draw_line(80, 0, 80, 160, color=127)
 
-    blobs = findTopBlob(img)
+    # blobs = findTopBlob(img)
 
-    if blobs:
-        drawTopBlob(img, blobs)
-        blobErr = findBlobErr(blobs)
+    # if blobs:
+    #     drawTopBlob(img, blobs)
+    #     blobErr = findBlobErr(blobs)
 
     # printErr(blobErr)
 
@@ -210,28 +217,35 @@ while True:
         # Rule of Thirds Logic (QQQVGA width = 80)
         x1, x2 = line.x1(), line.x2()
 
-        position_string = "None"
+        # position_string = "None"
 
-        # Check if both endpoints are fully in the left region
-        if x1 < 25 and x2 < 25:
-            position_string = "Left"
+        # # Check if both endpoints are fully in the left region
+        # if x1 < 25 and x2 < 25:
+        #     position_string = "Left"
 
-        # Check if both endpoints are fully in the right region
-        elif x1 > 55 and x2 > 55:
-            position_string = "Right"
+        # # Check if both endpoints are fully in the right region
+        # elif x1 > 55 and x2 > 55:
+        #     position_string = "Right"
 
-        # Check if both endpoints are fully in the center region
-        elif 25 <= x1 <= 55 and 25 <= x2 <= 55:
-            position_string = "Center"
+        # # Check if both endpoints are fully in the center region
+        # elif 25 <= x1 <= 55 and 25 <= x2 <= 55:
+        #     position_string = "Center"
 
-        # If the endpoints fall in different regions, the line spans multiple regions
-        else:
-            position_string = "None"
-            # LEDs remain off as set at the top of the loop
+        # # If the endpoints fall in different regions, the line spans multiple regions
+        # else:
+        #     position_string = "None"
+        #     # LEDs remain off as set at the top of the loop
 
-        print(f"FPS: {clock.fps():.1f} | {deflection_angle:.2f} Degrees, \"{position_string}\"")
-        print(f"Bottom:{x1}, Top:{x2}")
+        # print(f"FPS: {clock.fps():.1f} | {deflection_angle:.2f} Degrees, \"{position_string}\"")
+        # print(f"Bottom:{x1}, Top:{x2}")
         # Serial Terminal Output (throttled to save FPS)
+
+        # Makes the center of the screen as offset of 0
+        offset = x1 - 40
+
+        # control, past_err, integral = pid_ctrl(offset, deflection_angle, past_err, integral, dt)
+        # steer_percent = max(min(control, 1), -1) * 100
+        # print(f"Control RetVal: {steer_percent}%")
 
     else:
         print(f"FPS: {clock.fps():.1f} | No Line Detected")
@@ -239,3 +253,5 @@ while True:
     print(f"FPS: {clock.fps():.1f}")
 
     dt = 1 / clock.fps()
+
+    Car.Steer(Car, Car.msToTicks(Car, 1.1), 100)
