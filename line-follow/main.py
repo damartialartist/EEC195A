@@ -4,10 +4,13 @@ import csi
 import image
 import time
 import math
+import pyb
 
+from micropython import const
 from pyb import Pin, Timer
 
 # Classes --------------------
+
 
 
 class BlobMeasured():
@@ -69,6 +72,9 @@ img = csi0.snapshot()
 
 # Car Initialization --------------------
 car = Car()
+car.Throttle(car.BRAKE)
+car.Steer(car.STRAIGHT)
+pyb.delay(const(10 * 10**3))
 
 # Constants --------------------
 # IMG
@@ -160,8 +166,9 @@ def pid_ctrl(offset, angle, previous_error, integral, dt):
     # define ctrller coeffs
     kpo = 1.5
     kpa = 0.25
-    kd = 0
+    kd = 1.0
     ki = 0
+    dt = dt if dt != 0 else 0.025
 
     # normalize input errors; desired offset and angle are both 0
     e_off = -1 * offset / 40  # range -40 to 40
@@ -171,14 +178,13 @@ def pid_ctrl(offset, angle, previous_error, integral, dt):
     integral += e_off * dt
     derivative = (e_off - previous_error) / dt
 
-    # control = prop + ki * integral + kd * derivative
-    control = prop
+    control = prop + ki * integral + kd * derivative
     return control, e_off, integral
 
 
 past_err = 0
 integral = 0
-dt = 1 / clock.fps()
+dt = 2
 while True:
     clock.tick()
     img = csi0.snapshot().binary([THRESHOLD]) if BINARY_VISIBLE else csi0.snapshot()
@@ -241,24 +247,23 @@ while True:
         # Serial Terminal Output (throttled to save FPS)
 
         # Makes the center of the screen as offset of 0
-        offset = x1 - 40
+        offset = bottom_x - 40
 
         control, past_err, integral = pid_ctrl(offset, deflection_angle, past_err, integral, dt)
         steer_percent = max(min(control, 1), -1) * 100
-        print(f"Control RetVal: {steer_percent}%")
-
-        if (steer_percent > 100):
-            steer_percent = 100
-        elif (steer_percent < -100):
-            steer_percent = -100
+        # print(f"Control RetVal: {steer_percent}%")
 
         if (steer_percent < 0):
             car.Steer(car.LEFT, abs(steer_percent))
         elif (steer_percent >= 0):
             car.Steer(car.RIGHT, steer_percent)
 
+        print("THROTLE")
+        car.Throttle(car.FULL_SPEED_FORWARD, 40)
+
     else:
         print(f"FPS: {clock.fps():.1f} | No Line Detected")
+        continue
 
     print(f"FPS: {clock.fps():.1f}")
 
