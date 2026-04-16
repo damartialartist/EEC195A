@@ -9,10 +9,12 @@ import pyb
 from micropython import const
 from pyb import Pin, Timer
 
+
+minThrottle = 40
+maxThrottle = 100
+
+
 # Classes --------------------
-
-
-
 class BlobMeasured():
     def __init__(self, xoff, deg):
         self.xoff = xoff
@@ -182,6 +184,13 @@ def pid_ctrl(offset, angle, previous_error, integral, dt):
     return control, e_off, integral
 
 
+def ThrottleFromSteer(steering_angle):
+    absAngle = abs(steering_angle)
+    throttle = 100 - (((maxThrottle - minThrottle) / 100) * absAngle)
+
+    return throttle
+
+
 past_err = 0
 integral = 0
 dt = 2
@@ -251,15 +260,14 @@ while True:
 
         control, past_err, integral = pid_ctrl(offset, deflection_angle, past_err, integral, dt)
         steer_percent = max(min(control, 1), -1) * 100
-        # print(f"Control RetVal: {steer_percent}%")
 
         if (steer_percent < 0):
             car.Steer(car.LEFT, abs(steer_percent))
         elif (steer_percent >= 0):
             car.Steer(car.RIGHT, steer_percent)
 
-        print("THROTLE")
-        car.Throttle(car.FULL_SPEED_FORWARD, 40)
+        throttle_percent = ThrottleFromSteer(steer_percent)
+        car.Throttle(car.FULL_SPEED_FORWARD, throttle_percent)
 
     else:
         print(f"FPS: {clock.fps():.1f} | No Line Detected")
