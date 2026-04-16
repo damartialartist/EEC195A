@@ -22,9 +22,9 @@ class Car():
 
     def __init__(self):
         # Modes
-        self.FULL_SPEED_REVERSE = self.RIGHT = self.msToTicks(1.1)
+        self.FULL_SPEED_REVERSE = self.LEFT = self.msToTicks(1.1)
         self.STRAIGHT = self.BRAKE = self.msToTicks(1.5)
-        self.FULL_SPEED_FORWARD = self.LEFT = self.msToTicks(1.9)
+        self.FULL_SPEED_FORWARD = self.RIGHT = self.msToTicks(1.9)
         self.OFF = 0
 
         self.currentMode = self.OFF
@@ -68,7 +68,7 @@ csi0.auto_whitebal(False)
 img = csi0.snapshot()
 
 # Car Initialization --------------------
-myCar = Car()
+car = Car()
 
 # Constants --------------------
 # IMG
@@ -158,14 +158,14 @@ def printErr(blobErr: BlobMeasured):
 
 def pid_ctrl(offset, angle, previous_error, integral, dt):
     # define ctrller coeffs
-    kpo = 1
-    kpa = 0.5
+    kpo = 1.5
+    kpa = 0.25
     kd = 0
     ki = 0
 
     # normalize input errors; desired offset and angle are both 0
     e_off = -1 * offset / 40  # range -40 to 40
-    e_ang = -1 * angle / 90
+    e_ang = -1 * angle / 45
 
     prop = kpo * e_off + kpa * e_ang
     integral += e_off * dt
@@ -243,10 +243,19 @@ while True:
         # Makes the center of the screen as offset of 0
         offset = x1 - 40
 
-        # control, past_err, integral = pid_ctrl(offset, deflection_angle, past_err, integral, dt)
-        # steer_percent = max(min(control, 1), -1) * 100
-        # print(f"Control RetVal: {steer_percent}%")
-        # Car.Steer(Car, what to put here, steer_percent)
+        control, past_err, integral = pid_ctrl(offset, deflection_angle, past_err, integral, dt)
+        steer_percent = max(min(control, 1), -1) * 100
+        print(f"Control RetVal: {steer_percent}%")
+
+        if (steer_percent > 100):
+            steer_percent = 100
+        elif (steer_percent < -100):
+            steer_percent = -100
+
+        if (steer_percent < 0):
+            car.Steer(car.LEFT, abs(steer_percent))
+        elif (steer_percent >= 0):
+            car.Steer(car.RIGHT, steer_percent)
 
     else:
         print(f"FPS: {clock.fps():.1f} | No Line Detected")
