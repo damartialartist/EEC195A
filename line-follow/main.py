@@ -10,8 +10,8 @@ from micropython import const
 from pyb import Pin, Timer
 
 
+maxThrottle = 80
 minThrottle = 40
-maxThrottle = 100
 
 
 # Classes --------------------
@@ -166,27 +166,42 @@ def printErr(blobErr: BlobMeasured):
 
 def pid_ctrl(offset, angle, previous_error, integral, dt):
     # define ctrller coeffs
-    kpo = 1.5
-    kpa = 0.25
+    kpo = 1.8
+    kpa = 0.15
     kd = 1.0
-    ki = 0
+    ki = 0.25
+
+    icap = 0.5
+
     dt = dt if dt != 0 else 0.025
 
     # normalize input errors; desired offset and angle are both 0
     e_off = -1 * offset / 40  # range -40 to 40
     e_ang = -1 * angle / 45
 
+    # Compute independent PID components
     prop = kpo * e_off + kpa * e_ang
     integral += e_off * dt
     derivative = (e_off - previous_error) / dt
+
+    # Reset integral if error crosses 0
+    if (e_off * previous_error < 0):
+        integral = 0
+
+    # Max/Min cap of integral
+    if (integral > icap):
+        integral = icap
+    elif (integral < -icap):
+        integral = -icap
 
     control = prop + ki * integral + kd * derivative
     return control, e_off, integral
 
 
 def ThrottleFromSteer(steering_angle):
+    # Determine Throttle Percent based on Steer Angle Percent
     absAngle = abs(steering_angle)
-    throttle = 100 - (((maxThrottle - minThrottle) / 100) * absAngle)
+    throttle = maxThrottle - (((maxThrottle - minThrottle) / 100) * absAngle)
 
     return throttle
 
@@ -194,6 +209,7 @@ def ThrottleFromSteer(steering_angle):
 past_err = 0
 integral = 0
 dt = 2
+throttle_percent = minThrottle
 while True:
     clock.tick()
     img = csi0.snapshot().binary([THRESHOLD]) if BINARY_VISIBLE else csi0.snapshot()
@@ -270,6 +286,8 @@ while True:
         car.Throttle(car.FULL_SPEED_FORWARD, throttle_percent)
 
     else:
+        integral = 0    # Reset integral
+        car.Throttle(car.BRAKE)
         print(f"FPS: {clock.fps():.1f} | No Line Detected")
         continue
 
