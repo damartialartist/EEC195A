@@ -10,7 +10,7 @@ from micropython import const
 from pyb import Pin, Timer
 
 
-maxThrottle = 80
+maxThrottle = 50
 minThrottle = 40
 
 
@@ -27,9 +27,9 @@ class Car():
 
     def __init__(self):
         # Modes
-        self.FULL_SPEED_REVERSE = self.LEFT = self.msToTicks(1.1)
+        self.FULL_SPEED_REVERSE = self.RIGHT = self.msToTicks(1.1)
         self.STRAIGHT = self.BRAKE = self.msToTicks(1.5)
-        self.FULL_SPEED_FORWARD = self.RIGHT = self.msToTicks(1.9)
+        self.FULL_SPEED_FORWARD = self.LEFT = self.msToTicks(1.9)
         self.OFF = 0
 
         self.currentMode = self.OFF
@@ -39,6 +39,8 @@ class Car():
         self.pwmServo = self.tim.channel(2, Timer.PWM, pin=Pin("P8"), pulse_width=0)
 
     def Steer(self, mode, percentage=100):
+        percentage = max(min(percentage, 100), 0)
+
         modifier = self.msToTicks((0.4 * (1-percentage/100)))
 
         if (mode == self.RIGHT):
@@ -166,23 +168,46 @@ def printErr(blobErr: BlobMeasured):
 
 def pid_ctrl(offset, angle, previous_error, integral, dt):
     # define ctrller coeffs
-    kpo = 1.8
-    kpa = 0.15
-    kd = 1.0
-    ki = 0.25
+    kpo = 1.2
+    kpa = 0.5
+    kd = 0.5
+    ki = 0
 
     icap = 0.5
 
     dt = dt if dt != 0 else 0.025
 
     # normalize input errors; desired offset and angle are both 0
-    e_off = -1 * offset / 40  # range -40 to 40
-    e_ang = -1 * angle / 45
+    e_off = 1 * offset / 40  # range -40 to 40
+    e_ang = 1 * angle / 45
 
-    # Compute independent PID components
-    prop = kpo * e_off + kpa * e_ang
-    integral += e_off * dt
-    derivative = (e_off - previous_error) / dt
+    # Eliminate offset error when small
+    ignore_off = abs(e_off) <= 0.05
+    ignore_ang = abs(e_ang) <= 0.05
+
+    if (ignore_off and ignore_ang):
+        print('both ignored')
+        e_off = 0
+        e_ang = 0
+        prop = kpo * e_off + kpa * e_ang
+        integral = 0
+        derivative = 0
+    elif (ignore_off):
+        print('Offset Error Ignored')
+        e_off = 0
+        prop = kpo * e_off + kpa * e_ang
+        integral = 0
+        derivative = 0
+    elif (ignore_ang):
+        print("Angle Error Ignored")
+        e_ang = 0
+        prop = kpo * e_off + kpa * e_ang
+        integral += e_off * dt
+        derivative = (e_off - previous_error) / dt
+    else:
+        prop = kpo * e_off + kpa * e_ang
+        integral += e_off * dt
+        derivative = (e_off - previous_error) / dt
 
     # Reset integral if error crosses 0
     if (e_off * previous_error < 0):
@@ -195,6 +220,7 @@ def pid_ctrl(offset, angle, previous_error, integral, dt):
         integral = -icap
 
     control = prop + ki * integral + kd * derivative
+    print(f"error = {control}")
     return control, e_off, integral
 
 
@@ -287,10 +313,7 @@ while True:
 
     else:
         integral = 0    # Reset integral
-        car.Throttle(car.BRAKE)
-        print(f"FPS: {clock.fps():.1f} | No Line Detected")
+        car.Throttle(car.FULL_SPEED_FORWARD, minThrottle)
         continue
-
-    print(f"FPS: {clock.fps():.1f}")
 
     dt = 1 / clock.fps()
