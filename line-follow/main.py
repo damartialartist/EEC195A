@@ -10,8 +10,9 @@ from micropython import const
 from pyb import Pin, Timer
 
 
-maxThrottle = 50
-minThrottle = 40
+maxThrottle = 55
+minThrottle = 20
+blindThrottle = 20
 
 
 # Classes --------------------
@@ -33,6 +34,7 @@ class Car():
         self.OFF = 0
 
         self.currentMode = self.OFF
+        self.CURR_STEER = self.STRAIGHT
         # PWM
         self.tim = Timer(4, freq=100)
         self.pwmDCPos = self.tim.channel(1, Timer.PWM, pin=Pin("P7"), pulse_width=0)
@@ -51,6 +53,7 @@ class Car():
             width = mode
 
         self.pwmServo.pulse_width(int(width))
+        self.CURR_STEER = mode
 
     def Throttle(self, mode, percentage=100):
         modifier = self.msToTicks((0.4 * (1-percentage/100)))
@@ -70,7 +73,7 @@ csi0 = csi.CSI()
 csi0.reset()
 csi0.pixformat(csi.GRAYSCALE)
 csi0.framesize(csi.QQQVGA)
-csi0.auto_gain(False)
+csi0.auto_gain(False, gain_db=18.5)
 csi0.auto_whitebal(False)
 img = csi0.snapshot()
 
@@ -86,11 +89,11 @@ img_width = img.width()
 img_middle_x = img_width // 2
 
 # Blobs
-thresholds = (180, 255)
+thresholds = (200, 230)
 ROIs = (0, 0, 160, 10, 0.5)  # x y w h (weight)
 
 
-THRESHOLD = (170, 255)
+THRESHOLD = (220, 255)
 BINARY_VISIBLE = True
 
 clock = time.clock()
@@ -166,52 +169,40 @@ def printErr(blobErr: BlobMeasured):
         img.draw_string(20, 30, "No Shift", color=0, scale=1)
 
 
-def pid_ctrl(offset, angle, previous_error, integral, dt):
+def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, dt):
     # define ctrller coeffs
-    kpo = 1.2
-    kpa = 0.5
-    kd = 0.5
-    ki = 0
+    kpo = 1.7
+    kpa = 1.3
+    kd = 0.65
+    ki = 0.35
 
     icap = 0.5
 
     dt = dt if dt != 0 else 0.025
 
     # normalize input errors; desired offset and angle are both 0
-    e_off = 1 * offset / 40  # range -40 to 40
-    e_ang = 1 * angle / 45
+    e_off = offset / 40  # range -40 to 40
+    e_ang = angle / 45
+
+    integral += e_off * dt
+    derivative = (e_off - previous_error) / dt + 0 * (e_ang - previous_err_a) / dt
 
     # Eliminate offset error when small
-    ignore_off = abs(e_off) <= 0.05
-    ignore_ang = abs(e_ang) <= 0.05
+    ignore_off = abs(e_off) <= 0.08
+    ignore_ang = abs(e_ang) <= 0.08
 
     if (ignore_off and ignore_ang):
-        print('both ignored')
-        e_off = 0
-        e_ang = 0
-        prop = kpo * e_off + kpa * e_ang
-        integral = 0
-        derivative = 0
+        prop = 0
     elif (ignore_off):
-        print('Offset Error Ignored')
-        e_off = 0
-        prop = kpo * e_off + kpa * e_ang
-        integral = 0
-        derivative = 0
+        prop = kpa * e_ang
     elif (ignore_ang):
-        print("Angle Error Ignored")
-        e_ang = 0
-        prop = kpo * e_off + kpa * e_ang
-        integral += e_off * dt
-        derivative = (e_off - previous_error) / dt
+        prop = kpo * e_off
     else:
         prop = kpo * e_off + kpa * e_ang
-        integral += e_off * dt
-        derivative = (e_off - previous_error) / dt
 
     # Reset integral if error crosses 0
     if (e_off * previous_error < 0):
-        integral = 0
+        integral *= 0.5
 
     # Max/Min cap of integral
     if (integral > icap):
@@ -220,8 +211,8 @@ def pid_ctrl(offset, angle, previous_error, integral, dt):
         integral = -icap
 
     control = prop + ki * integral + kd * derivative
-    print(f"error = {control}")
-    return control, e_off, integral
+    # print(f"error = {control}")
+    return control, e_off, e_ang, integral
 
 
 def ThrottleFromSteer(steering_angle):
@@ -232,7 +223,8 @@ def ThrottleFromSteer(steering_angle):
     return throttle
 
 
-past_err = 0
+past_off = 0
+past_ang = 0
 integral = 0
 dt = 2
 throttle_percent = minThrottle
@@ -300,20 +292,25 @@ while True:
         # Makes the center of the screen as offset of 0
         offset = bottom_x - 40
 
-        control, past_err, integral = pid_ctrl(offset, deflection_angle, past_err, integral, dt)
-        steer_percent = max(min(control, 1), -1) * 100
+        control, past_off, past_ang, integral = pid_ctrl(offset, deflection_angle, past_off, past_ang, integral, dt)
 
-        if (steer_percent < 0):
-            car.Steer(car.LEFT, abs(steer_percent))
-        elif (steer_percent >= 0):
-            car.Steer(car.RIGHT, steer_percent)
+        if abs(control) < 0.05:
+            car.Steer(car.STRAIGHT)
+            throttle_percent = maxThrottle
+        else:
+            steer_percent = max(min(control, 1), -1) * 100
+            if (steer_percent < 0):
+                car.Steer(car.LEFT, abs(steer_percent))
+            else:
+                car.Steer(car.RIGHT, steer_percent)
+            throttle_percent = ThrottleFromSteer(steer_percent)
 
-        throttle_percent = ThrottleFromSteer(steer_percent)
         car.Throttle(car.FULL_SPEED_FORWARD, throttle_percent)
 
     else:
         integral = 0    # Reset integral
-        car.Throttle(car.FULL_SPEED_FORWARD, minThrottle)
+        car.Throttle(car.FULL_SPEED_FORWARD, blindThrottle)
+        car.Steer(car.CURR_STEER, 100)
         continue
 
     dt = 1 / clock.fps()
