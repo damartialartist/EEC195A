@@ -1,5 +1,6 @@
 # Jacky Chen, Mandy Chokry, Angel Hernandez Vega, Nathan Leung
-# Lab 6, Program 2 & 3: Closest to Center ROIs and Angles of Deflection
+# Line-Following Script
+
 import csi
 import image
 import time
@@ -10,8 +11,8 @@ from micropython import const
 from pyb import Pin, Timer
 
 
-maxThrottle = 55
-minThrottle = 20
+maxThrottle = 48
+minThrottle = 22
 blindThrottle = 20
 
 
@@ -171,9 +172,9 @@ def printErr(blobErr: BlobMeasured):
 
 def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, dt):
     # define ctrller coeffs
-    kpo = 1.7
-    kpa = 1.3
-    kd = 0.65
+    kpo = 1.8
+    kpa = 1.45
+    kd = 0.75
     ki = 0.35
 
     icap = 0.5
@@ -188,8 +189,8 @@ def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, dt):
     derivative = (e_off - previous_error) / dt + 0 * (e_ang - previous_err_a) / dt
 
     # Eliminate offset error when small
-    ignore_off = abs(e_off) <= 0.08
-    ignore_ang = abs(e_ang) <= 0.08
+    ignore_off = abs(e_off) <= 0.10
+    ignore_ang = abs(e_ang) <= 0.10
 
     if (ignore_off and ignore_ang):
         prop = 0
@@ -294,7 +295,7 @@ while True:
 
         control, past_off, past_ang, integral = pid_ctrl(offset, deflection_angle, past_off, past_ang, integral, dt)
 
-        if abs(control) < 0.05:
+        if abs(control) < 0.08:
             car.Steer(car.STRAIGHT)
             throttle_percent = maxThrottle
         else:
