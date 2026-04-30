@@ -28,9 +28,11 @@ class Car():
         self.currentMode = self.OFF
         self.CURR_STEER = self.STRAIGHT
         # PWM
-        self.tim = Timer(4, freq=500)
-        self.pwmDCPos = self.tim.channel(1, Timer.PWM, pin=Pin("P7"), pulse_width=0)
-        self.pwmServo = self.tim.channel(2, Timer.PWM, pin=Pin("P8"), pulse_width=0)
+        self.timDC = Timer(2, freq=15000)
+        self.pwmDCPos = self.timDC.channel(1, Timer.PWM, pin=Pin("P4"), pulse_width=0)
+
+        self.timServo = Timer(4, freq=100)
+        self.pwmServo = self.timServo.channel(2, Timer.PWM, pin=Pin("P8"), pulse_width=0)
 
         # INA INB
         self.ina = Pin("P1", Pin.OUT_PP)
