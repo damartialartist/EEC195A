@@ -64,7 +64,7 @@ class Car():
         elif (mode == self.FULL_SPEED_FORWARD):
             self.ina.value(1)
             self.inb.value(0)
-            self.pwmDCPos.pulse_width_percent(30)
+            self.pwmDCPos.pulse_width_percent(percentage)
 
 
 # Camera Setup --------------------
@@ -80,6 +80,7 @@ img = csi0.snapshot()
 car = Car()
 car.Throttle(car.BRAKE)
 car.Steer(car.STRAIGHT)
+pyb.delay(500)
 
 clock = time.clock()
 
@@ -87,12 +88,9 @@ while True:
     clock.tick()
     img = csi0.snapshot()
 
-    print("yamom")
-    pyb.delay(5000)
-    print("yamom")
-    car.Throttle(car.FULL_SPEED_FORWARD)
-    car.Steer(car.LEFT)
-    pyb.delay(5000)
-    car.Throttle(car.BRAKE)
-    car.Steer(car.STRAIGHT)
+    for i in range (30, 80):
+        car.Throttle(car.FULL_SPEED_FORWARD, percentage=min(i, 100))
+        car.Steer(car.RIGHT, percentage=min(10*(i-30),100))
+
+        pyb.delay(500)
     print(clock.fps())
