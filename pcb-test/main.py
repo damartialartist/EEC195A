@@ -29,7 +29,7 @@ class Car():
         self.CURR_STEER = self.STRAIGHT
         # PWM
         self.timDC = Timer(2, freq=15000)
-        self.pwmDCPos = self.timDC.channel(1, Timer.PWM, pin=Pin("P4"), pulse_width=0)
+        self.pwmDCPos = self.timDC.channel(3, Timer.PWM, pin=Pin("P4"), pulse_width=0)
 
         self.timServo = Timer(4, freq=100)
         self.pwmServo = self.timServo.channel(2, Timer.PWM, pin=Pin("P8"), pulse_width=0)
@@ -79,7 +79,7 @@ img = csi0.snapshot()
 # Car Initialization --------------------
 car = Car()
 car.Throttle(car.BRAKE)
-#car.Steer(car.STRAIGHT)
+car.Steer(car.STRAIGHT)
 
 clock = time.clock()
 
@@ -91,6 +91,8 @@ while True:
     pyb.delay(5000)
     print("yamom")
     car.Throttle(car.FULL_SPEED_FORWARD)
+    car.Steer(car.LEFT)
     pyb.delay(5000)
     car.Throttle(car.BRAKE)
+    car.Steer(car.STRAIGHT)
     print(clock.fps())
