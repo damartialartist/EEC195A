@@ -92,5 +92,5 @@ while True:
         car.Throttle(car.FULL_SPEED_FORWARD, percentage=min(i, 100))
         car.Steer(car.RIGHT, percentage=min(10*(i-30),100))
 
-        pyb.delay(500)
+        pyb.delay(100)
     print(clock.fps())
