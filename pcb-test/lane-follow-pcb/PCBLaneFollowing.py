@@ -1,5 +1,5 @@
 # Jacky Chen, Mandy Chokry, Angel Hernandez Vega, Nathan Leung
-# Integrated Lane-Keeping - Aggressive Braking & Instant Recovery Override
+# Integrated Lane-Keeping - Center-Seeking & Ultra-Stable Straightaways
 
 import csi
 import image
@@ -11,9 +11,9 @@ from micropython import const
 from pyb import Pin, Timer
 
 # --- Speed Constants ---
-maxThrottle = 46
-minThrottle = 23
-blindThrottle = 23
+maxThrottle = 40
+minThrottle = 20
+blindThrottle = 15
 
 # ==========================================
 # CLASSES
@@ -29,7 +29,6 @@ class Car():
         return int((ms / 10) * 19200)
 
     def __init__(self):
-        # Modes
         self.FULL_SPEED_REVERSE = self.RIGHT = self.msToTicks(1.1)
         self.STRAIGHT = self.BRAKE = self.msToTicks(1.5)
         self.FULL_SPEED_FORWARD = self.LEFT = self.msToTicks(1.9)
@@ -38,15 +37,12 @@ class Car():
         self.currentMode = self.OFF
         self.CURR_STEER = self.STRAIGHT
 
-        # PWM: DC Motor (VNH Driver on Timer 2, 15kHz)
         self.timDC = Timer(2, freq=15000)
         self.pwmDCPos = self.timDC.channel(3, Timer.PWM, pin=Pin("P4"), pulse_width=0)
 
-        # PWM: Servo Motor (Standard RC on Timer 4, 100Hz)
         self.timServo = Timer(4, freq=100)
         self.pwmServo = self.timServo.channel(2, Timer.PWM, pin=Pin("P8"), pulse_width=0)
 
-        # INA / INB Directional Pins
         self.ina = Pin("P1", Pin.OUT_PP)
         self.inb = Pin("P2", Pin.OUT_PP)
 
@@ -103,7 +99,7 @@ pyb.delay(const(1 * 10**3))
 # CONSTANTS & VISION PIPELINE SETTINGS
 # ==========================================
 
-WHITE_THRESH = [(100, 255)]
+WHITE_THRESH = [(100, 255)] #100 for big lab room, 140 for smaller lab room
 ORANGE_THRESH = [(30, 80, 15, 127, 15, 127)]
 
 KERNEL_SIZE = 1
@@ -111,7 +107,8 @@ KERNEL = [ 0, -1,  0,
           -1,  5, -1,
            0, -1,  0]
 
-TRACKING_ROI = (0, 15, 80, 45)
+# --- FULL VISION ROI ---
+TRACKING_ROI = (0, 0, 80, 60)
 
 clock = time.clock()
 
@@ -126,10 +123,10 @@ def standardize_line(l):
         return l.x2(), l.y2(), l.x1(), l.y1()
 
 def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, dt):
-    # CRANKED PID TUNE for harder cornering
-    kpo = 1.2
-    kpa = 1.5
-    kd = 1.8
+    # --- ULTRA-STABLE STRAIGHTAWAY TUNE ---
+    kpo = 0.85  # Softened from 1.0 so it doesn't jump at tiny pixel shifts
+    kpa = 1.2
+    kd = 3.2    # Bumped from 2.5 to freeze the steering on straights
     ki = 0.1
     icap = 0.5
     dt = dt if dt != 0 else 0.025
@@ -165,10 +162,10 @@ def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, dt):
 
 def ThrottleFromSteer(steering_angle):
     absAngle = abs(steering_angle)
-    # AGGRESSIVE BRAKING: If steering is more than 40%, slam on the brakes!
+    # Aggressive braking for corners
     if absAngle > 40:
         return minThrottle
-    # Otherwise, smoothly scale speed down from max
+
     throttle = maxThrottle - (((maxThrottle - minThrottle) / 40) * absAngle)
     return max(throttle, minThrottle)
 
@@ -210,33 +207,46 @@ while True:
         # --- THE INSTANT RECOVERY OVERRIDE ---
         if off_track_flag == "RIGHT":
             if lx1 > 40:
-                off_track_flag = "NONE" # Successfully crossed back inside!
+                off_track_flag = "NONE"
                 last_known_side = "RIGHT"
             else:
                 is_recovering = True
-                car.Steer(car.LEFT, 100) # Hard lock servo, ignore PID!
+                car.Steer(car.LEFT, 100)
                 car.Throttle(car.FULL_SPEED_FORWARD, blindThrottle)
 
         elif off_track_flag == "LEFT":
             if lx1 < 40:
-                off_track_flag = "NONE" # Successfully crossed back inside!
+                off_track_flag = "NONE"
                 last_known_side = "LEFT"
             else:
                 is_recovering = True
-                car.Steer(car.RIGHT, 100) # Hard lock servo, ignore PID!
+                car.Steer(car.RIGHT, 100)
                 car.Throttle(car.FULL_SPEED_FORWARD, blindThrottle)
 
-        # --- NORMAL HUGGING LOGIC ---
+        # --- NORMAL HUGGING LOGIC (CENTER-SEEKING) ---
         if not is_recovering:
-            if lx1 < 25:
+
+            # 1. Identify what we are looking at (ignore the middle 10 pixels for memory)
+            if lx1 < 35:
                 last_known_side = "LEFT"
-            elif lx1 > 55:
+            elif lx1 > 45:
                 last_known_side = "RIGHT"
 
-            if last_known_side == "LEFT":
-                offset = lx1 - 5
-            else:
-                offset = lx1 - 75
+            # 2. Calculate offset to keep the car in the middle of the lane
+            if 35 <= lx1 <= 45:
+                # We see BOTH lines (The Ghost Line). We are perfectly centered!
+                # Target the dead center of the screen (X=40).
+                offset = lx1 - 40
+
+            elif last_known_side == "LEFT":
+                # We drifted right and lost the right line. We only see the left line.
+                # Push the left line back to X=15 to re-center the car.
+                offset = lx1 - 15
+
+            elif last_known_side == "RIGHT":
+                # We drifted left and lost the left line. We only see the right line.
+                # Push the right line back to X=65 to re-center the car.
+                offset = lx1 - 65
 
             dx = lx2 - lx1
             dy = ly1 - ly2
@@ -244,7 +254,10 @@ while True:
 
             control, past_off, past_ang, integral = pid_ctrl(offset, deflection_angle, past_off, past_ang, integral, dt)
 
-            if abs(control) < 0.08:
+            # E. Apply Steering & Throttle
+            # --- WIDER DEADBAND ---
+            # Ignores camera noise/micro-jitter on straightaways!
+            if abs(control) < 0.12:
                 car.Steer(car.STRAIGHT)
                 car.Throttle(car.FULL_SPEED_FORWARD, maxThrottle)
             else:
