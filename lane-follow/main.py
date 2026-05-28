@@ -12,9 +12,9 @@ from pyb import Pin, Timer
 from ulab import numpy as np
 
 # --- Speed Constants ---
-maxThrottle = 70
-minThrottle = 35
-blindThrottle = 35
+maxThrottle = 60
+minThrottle = 27
+blindThrottle = 27
 
 # --- walk the dog ---
 # maxThrottle = 30
