@@ -12,14 +12,14 @@ from pyb import Pin, Timer
 from ulab import numpy as np
 
 # --- Speed Constants ---
-maxThrottle = 60
-minThrottle = 27
-blindThrottle = 27
+maxThrottle = 30
+minThrottle = 18
+blindThrottle = 18
 
 # --- walk the dog ---
-# maxThrottle = 30
-# minThrottle = 20
-# blindThrottle = 20
+# maxThrottle = 20
+# minThrottle = 15
+# blindThrottle = 15
 
 kickstartThrottle = 70
 KICKSTART_TIME = 0.5
@@ -226,10 +226,15 @@ def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, kappa, dt)
     # also dependent on curvature kappa
 
     # Controller Coefficients
-    kpo = 2
-    kd = 0.5
+    kpo = 1.5
+    kd = 0.25
     ki = 0.1
-    kkap = 1.2
+    kkap = 2.5
+
+    # kpo = 1.8
+    # kd = 1.6
+    # ki = 0.1
+    # kkap = 2
 
     icap = 0.5
     dt = dt if dt != 0 else 0.025
@@ -301,7 +306,7 @@ while True:
     for i in range(12):
         img.draw_rectangle((0, 5*i, 80, 5), color=100)
 
-    line = img.get_regression([(255, 255)], robust=True, roi=TRACKING_ROI)
+    line = img.get_regression([(255, 255)], robust=False, roi=TRACKING_ROI)
 
     if line:
         img.draw_line(line.line(), color=255)
