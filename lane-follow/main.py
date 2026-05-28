@@ -12,9 +12,17 @@ from pyb import Pin, Timer
 from ulab import numpy as np
 
 # --- Speed Constants ---
-maxThrottle = 30
-minThrottle = 23
-blindThrottle = 23
+maxThrottle = 70
+minThrottle = 35
+blindThrottle = 35
+
+# --- walk the dog ---
+# maxThrottle = 30
+# minThrottle = 20
+# blindThrottle = 20
+
+kickstartThrottle = 70
+KICKSTART_TIME = 0.5
 
 # ==========================================
 # CLASSES
@@ -41,8 +49,8 @@ class Car():
         self.currentMode = self.OFF
         self.CURR_STEER = self.STRAIGHT
 
-        # PWM: DC Motor (VNH Driver on Timer 2, 15kHz)
-        self.timDC = Timer(2, freq=15000)
+        # PWM: DC Motor (VNH Driver on Timer 2, 10kHz)
+        self.timDC = Timer(2, freq=5000)
         self.pwmDCPos = self.timDC.channel(3, Timer.PWM, pin=Pin("P4"), pulse_width=0)
 
         # PWM: Servo Motor (Standard RC on Timer 4, 100Hz)
@@ -61,9 +69,9 @@ class Car():
         modifier = self.msToTicks((0.4 * (1-percentage/100)))
 
         if (mode == self.RIGHT):
-            width = mode - modifier
-        elif (mode == self.LEFT):
             width = mode + modifier
+        elif (mode == self.LEFT):
+            width = mode - modifier
         else:
             width = mode
 
@@ -107,15 +115,15 @@ pyb.delay(const(1 * 10**3))
 # CONSTANTS & VISION PIPELINE SETTINGS
 # ==========================================
 
-WHITE_THRESH = [(100, 255)]
+WHITE_THRESH = [(140, 255)]
 ORANGE_THRESH = [(30, 80, 15, 127, 15, 127)]
 
 KERNEL_SIZE = 1
-KERNEL = [ 0, -1,  0,
+KERNEL = [0, -1,  0,
           -1,  5, -1,
-           0, -1,  0]
+          0, -1,  0]
 
-TRACKING_ROI = (0, 15, 80, 45)
+TRACKING_ROI = (0, 0, 80, 60)
 
 clock = time.clock()
 
@@ -124,8 +132,8 @@ clock = time.clock()
 # ==========================================
 
 
-def find2Blobs(img: csi.image, ROI) -> None | list:
-    threshold_list = [(200, 230)]
+def find2Blobs(img: csi.image, ROI, lastXL, lastXR) -> None | list:
+    threshold_list = [(240, 255)]
     blob_array = img.find_blobs(
         threshold_list, pixels_threshold=5, area_threshold=5, merge=True, roi=ROI)
 
@@ -147,12 +155,12 @@ def find2Blobs(img: csi.image, ROI) -> None | list:
                 blobleft = blob2
                 blobright = blob1
         elif (len(blob_array) == 1):
-            if (blob1.cx() > 40):
-                blobleft = blob1
-                blobright = None
-            else:
+            if (abs(blob1.cx() - lastXL) > abs(blob1.cx() - lastXR)):
                 blobleft = None
                 blobright = blob1
+            else:
+                blobleft = blob1
+                blobright = None
     else:
         blobleft = None
         blobright = None
@@ -162,38 +170,48 @@ def find2Blobs(img: csi.image, ROI) -> None | list:
 def get_curvature(img: csi.image):
     xvals = []
     yvals = []
-    for i in range(12):
-        x1 = None
-        x2 = None
-        y1 = None
-        y2 = None
+    a, b, c = 0.0, 0.0, 0.0
+    TRACK_WIDTH = 60  # pixels approximately
+    TRACK_HALF = TRACK_WIDTH / 2
+    last_xL = 0     # leftmosts init value
+    last_xR = 80    # rightmost init value
+    for i in reversed(range(12)):
+        cx = None
+        cy = None
         subROI = (0, 5*i, 80, 5)
-        blob1, blob2 = find2Blobs(img, subROI)
-        if (blob1 and blob2):
-            x1, y1 = blob1.cx(), blob1.cy()
-            x2, y2 = blob2.cx(), blob2.cy()
-        elif (blob1):
-            x1, y1 = blob1.cx(), blob1.cy()
-            x2, y2 = 80, 5*i + 3
-        elif (blob2):
-            x1, y1 = 0, 5*i + 3
-            x2, y2 = blob2.cx(), blob2.cy()
+        blobL, blobR = find2Blobs(img, subROI, last_xL, last_xR)
+        if (blobL and blobR):
+            last_xL = blobL.cx()
+            last_xR = blobR.cx()
+            cx = 0.5 * (blobL.cx() + blobR.cx())
+            cy = 0.5 * (blobL.cy() + blobR.cy())
+        elif (blobL):
+            last_xL = blobL.cx()
+            cx = blobL.cx() + TRACK_HALF
+            cy = blobL.cy()
+        elif (blobR):
+            last_xR = blobR.cx()
+            cx = blobR.cx() - TRACK_HALF
+            cy = blobR.cy()
         else:
-            x1, y1 = 0, 5*i + 3
-            x2, y2 = 80, 5*i + 3
-        x = 0.5*(x1 + x2)
-        y = 0.5*(y1 + y2)
-        xvals.append(x)
-        yvals.append(y)
+            continue
+
+        xvals.append(cx)
+        yvals.append(cy)
+
     xvalsarr = np.array(xvals)
     yvalsarr = np.array(yvals)
-    a, b, c = np.polyfit(yvalsarr, xvalsarr, 2)
-    x_pred = np.polyval((a, b, c), yvalsarr)
-    res = abs(xvalsarr - x_pred)
-    closest = np.argmin(res)
-    closesty = yvalsarr[closest]
-    kappa = 2 * abs(a) * (1 + ((2 * a * closesty) + b)**2)**(-1.5)
-    return kappa
+    if (len(xvalsarr) > 2):
+        a, b, c = np.polyfit(yvalsarr, xvalsarr, 2)
+        x_pred = np.polyval((a, b, c), yvalsarr)
+        res = abs(xvalsarr - x_pred)
+        closest = np.argmin(res)
+        closesty = yvalsarr[closest]
+        # closesty = 20
+        kappa = 2 * a * (1 + ((2 * a * closesty) + b)**2)**(-1.5)
+    else:
+        kappa = 0
+    return kappa, a, b, c
 
 
 def standardize_line(l):
@@ -208,16 +226,17 @@ def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, kappa, dt)
     # also dependent on curvature kappa
 
     # Controller Coefficients
-    kpo = 1.8
-    kd = 0.75
-    ki = 0.35
+    kpo = 2
+    kd = 0.5
+    ki = 0.1
+    kkap = 1.2
 
     icap = 0.5
     dt = dt if dt != 0 else 0.025
 
     # Normalize input errors
     e_off = offset / 40  # range -40 to 40
-    # Eliminate offset error when small (Deadband)
+    # Eliminate offset error when small
     ignore_off = abs(e_off) <= 0.10
 
     if (ignore_off):
@@ -234,54 +253,15 @@ def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, kappa, dt)
     elif (integral < -icap):
         integral = -icap
 
-    control = prop + ki * integral + kd * math.sin(angle) - kappa
+    control = prop + ki * integral + kd * math.sin(angle) + kkap * kappa
     return control, e_off, integral
-
-
-# def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, dt):
-#     # CRANKED PID TUNE for harder cornering
-#     kpo = 1.2
-#     kpa = 1.5
-#     kd = 1.8
-#     ki = 0.1
-#     icap = 0.5
-#     dt = dt if dt != 0 else 0.025
-
-#     e_off = offset / 40
-#     e_ang = angle / 45
-
-#     integral += e_off * dt
-#     derivative = (e_off - previous_error) / dt + 0 * (e_ang - previous_err_a) / dt
-
-#     ignore_off = abs(e_off) <= 0.10
-#     ignore_ang = abs(e_ang) <= 0.10
-
-#     if (ignore_off and ignore_ang):
-#         prop = 0
-#     elif (ignore_off):
-#         prop = kpa * e_ang
-#     elif (ignore_ang):
-#         prop = kpo * e_off
-#     else:
-#         prop = kpo * e_off + kpa * e_ang
-
-#     if (e_off * previous_error < 0):
-#         integral *= 0.5
-
-#     if (integral > icap):
-#         integral = icap
-#     elif (integral < -icap):
-#         integral = -icap
-
-#     control = prop + ki * integral + kd * derivative
-#     return control, e_off, e_ang, integral
 
 
 def ThrottleFromSteer(steering_angle):
     absAngle = abs(steering_angle)
     # AGGRESSIVE BRAKING: If steering is more than 40%, slam on the brakes!
-    if absAngle > 40:
-        return minThrottle
+    # if absAngle > 40:
+    #     return minThrottle
     # Otherwise, smoothly scale speed down from max
     throttle = maxThrottle - (((maxThrottle - minThrottle) / 40) * absAngle)
     return max(throttle, minThrottle)
@@ -302,6 +282,11 @@ last_known_side = "RIGHT"
 last_seen_x = 40
 off_track_flag = "NONE"
 
+# add starting boost
+# car.Throttle(car.FULL_SPEED_FORWARD, kickstartThrottle)
+# time.sleep(KICKSTART_TIME)
+# car.Throttle(car.FULL_SPEED_FORWARD, minThrottle)
+
 while True:
     clock.tick()
 
@@ -312,6 +297,9 @@ while True:
         .binary(thresholds=WHITE_THRESH)
 
     img.draw_rectangle(TRACKING_ROI, color=127)
+
+    for i in range(12):
+        img.draw_rectangle((0, 5*i, 80, 5), color=100)
 
     line = img.get_regression([(255, 255)], robust=True, roi=TRACKING_ROI)
 
@@ -357,7 +345,8 @@ while True:
             dy = ly1 - ly2
             deflection_angle = math.atan2(dx, dy)
 
-            kappa = get_curvature(img)
+            kappa, a, b, c = get_curvature(img)
+            # kappa = 0
             control, past_off, integral = pid_ctrl(offset, deflection_angle, past_off, past_ang, integral, kappa, dt)
 
             if abs(control) < 0.08:
@@ -392,4 +381,5 @@ while True:
 
         car.Throttle(car.FULL_SPEED_FORWARD, blindThrottle)
 
-    dt = 1 / clock.fps() if clock.fps() > 0 else 0.025
+    FPS = clock.fps()
+    dt = 1 / FPS
