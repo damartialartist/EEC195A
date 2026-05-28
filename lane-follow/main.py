@@ -226,10 +226,10 @@ def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, kappa, dt)
     # also dependent on curvature kappa
 
     # Controller Coefficients
-    kpo = 1.5
-    kd = 0.25
+    kpo = 1.7
+    kd = 0.3
     ki = 0.1
-    kkap = 2.5
+    kkap = 3
 
     # kpo = 1.8
     # kd = 1.6
