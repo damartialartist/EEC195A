@@ -12,14 +12,14 @@ from pyb import Pin, Timer
 from ulab import numpy as np
 
 # --- Speed Constants ---
-maxThrottle = 30
-minThrottle = 18
-blindThrottle = 18
+maxThrottle = 65
+minThrottle = 40
+blindThrottle = 40
 
 # --- walk the dog ---
-# maxThrottle = 20
-# minThrottle = 15
-# blindThrottle = 15
+# maxThrottle = 30
+# minThrottle = 18
+# blindThrottle = 18
 
 kickstartThrottle = 70
 KICKSTART_TIME = 0.5
@@ -102,7 +102,7 @@ csi0 = csi.CSI()
 csi0.reset()
 csi0.pixformat(csi.RGB565)
 csi0.framesize(csi.QQQVGA)
-csi0.auto_gain(False, gain_db=18.5)
+csi0.auto_gain(False, gain_db=19.5)
 csi0.auto_whitebal(False)
 img = csi0.snapshot()
 
@@ -226,7 +226,7 @@ def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, kappa, dt)
     # also dependent on curvature kappa
 
     # Controller Coefficients
-    kpo = 1.7
+    kpo = 2
     kd = 0.3
     ki = 0.1
     kkap = 3
@@ -303,8 +303,8 @@ while True:
 
     img.draw_rectangle(TRACKING_ROI, color=127)
 
-    for i in range(12):
-        img.draw_rectangle((0, 5*i, 80, 5), color=100)
+    # for i in range(12):
+    #     img.draw_rectangle((0, 5*i, 80, 5), color=100)
 
     line = img.get_regression([(255, 255)], robust=False, roi=TRACKING_ROI)
 
