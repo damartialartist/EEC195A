@@ -1,8 +1,7 @@
+# Lane Following Software
 # Jacky Chen, Mandy Chokry, Angel Hernandez Vega, Nathan Leung
-# Integrated Lane-Keeping - Aggressive Braking & Instant Recovery Override
 
 import csi
-# import image
 import time
 import math
 import pyb
@@ -16,25 +15,15 @@ maxThrottle = 65
 minThrottle = 40
 blindThrottle = 40
 
-# --- walk the dog ---
+# --- Walk the Dog ---
 # maxThrottle = 30
 # minThrottle = 18
 # blindThrottle = 18
 
-kickstartThrottle = 70
-KICKSTART_TIME = 0.5
 
 # ==========================================
 # CLASSES
 # ==========================================
-
-
-class BlobMeasured():
-    def __init__(self, xoff, deg):
-        self.xoff = xoff
-        self.deg = deg
-
-
 class Car():
     def msToTicks(self, ms):
         return int((ms / 10) * 19200)
@@ -49,11 +38,11 @@ class Car():
         self.currentMode = self.OFF
         self.CURR_STEER = self.STRAIGHT
 
-        # PWM: DC Motor (VNH Driver on Timer 2, 10kHz)
+        # PWM: DC Motor (Timer 2, 5kHz)
         self.timDC = Timer(2, freq=5000)
         self.pwmDCPos = self.timDC.channel(3, Timer.PWM, pin=Pin("P4"), pulse_width=0)
 
-        # PWM: Servo Motor (Standard RC on Timer 4, 100Hz)
+        # PWM: Servo Motor (Timer 4, 100Hz)
         self.timServo = Timer(4, freq=100)
         self.pwmServo = self.timServo.channel(2, Timer.PWM, pin=Pin("P8"), pulse_width=0)
 
@@ -65,6 +54,9 @@ class Car():
         self.inb.value(0)
 
     def Steer(self, mode, percentage=100):
+        '''
+        Drive the Servo Motor at a given percentage and direction, with center being 0%
+        '''
         percentage = max(min(percentage, 100), 0)
         modifier = self.msToTicks((0.4 * (1-percentage/100)))
 
@@ -79,6 +71,9 @@ class Car():
         self.CURR_STEER = mode
 
     def Throttle(self, mode, percentage=100):
+        '''
+        Drive the DC Motor at a given percentage of speed in a specified direction
+        '''
         percentage = max(min(percentage, 100), 0)
 
         if (mode == self.BRAKE):
@@ -106,33 +101,36 @@ csi0.auto_gain(False, gain_db=19.5)
 csi0.auto_whitebal(False)
 img = csi0.snapshot()
 
+
+# ==========================================
+# CAR INITIALIZATION
+# ==========================================
 car = Car()
 car.Throttle(car.BRAKE)
 car.Steer(car.STRAIGHT)
 pyb.delay(const(1 * 10**3))
 
+
 # ==========================================
 # CONSTANTS & VISION PIPELINE SETTINGS
 # ==========================================
-
 WHITE_THRESH = [(140, 255)]
 ORANGE_THRESH = [(30, 80, 15, 127, 15, 127)]
-
-KERNEL_SIZE = 1
-KERNEL = [0, -1,  0,
-          -1,  5, -1,
-          0, -1,  0]
 
 TRACKING_ROI = (0, 0, 80, 60)
 
 clock = time.clock()
 
+
 # ==========================================
 # FUNCTIONS
 # ==========================================
-
-
 def find2Blobs(img: csi.image, ROI, lastXL, lastXR) -> None | list:
+    '''
+    Find the two largest blobs in an ROI, determining left and right.
+    Use memory of previous blob locations if only one blob is in the ROI.
+    '''
+
     threshold_list = [(240, 255)]
     blob_array = img.find_blobs(
         threshold_list, pixels_threshold=5, area_threshold=5, merge=True, roi=ROI)
@@ -168,18 +166,26 @@ def find2Blobs(img: csi.image, ROI, lastXL, lastXR) -> None | list:
 
 
 def get_curvature(img: csi.image):
+    '''
+    Approximate curvature from lines on screen
+    '''
+
     xvals = []
     yvals = []
     a, b, c = 0.0, 0.0, 0.0
-    TRACK_WIDTH = 60  # pixels approximately
+
+    last_xL = 0         # leftmosts init value
+    last_xR = 80        # rightmost init value
+    TRACK_WIDTH = 60    # pixels approximately
     TRACK_HALF = TRACK_WIDTH / 2
-    last_xL = 0     # leftmosts init value
-    last_xR = 80    # rightmost init value
-    for i in reversed(range(12)):
+
+    # Grab coordinates of in subROIs of the lines
+    for i in reversed(range(12)):   # iterate from bottom of screen to top
         cx = None
         cy = None
         subROI = (0, 5*i, 80, 5)
         blobL, blobR = find2Blobs(img, subROI, last_xL, last_xR)
+
         if (blobL and blobR):
             last_xL = blobL.cx()
             last_xR = blobR.cx()
@@ -199,22 +205,28 @@ def get_curvature(img: csi.image):
         xvals.append(cx)
         yvals.append(cy)
 
+    # Compute curvature constant from collected points
     xvalsarr = np.array(xvals)
     yvalsarr = np.array(yvals)
     if (len(xvalsarr) > 2):
+        # Fit collected coordinates to a parabola
         a, b, c = np.polyfit(yvalsarr, xvalsarr, 2)
         x_pred = np.polyval((a, b, c), yvalsarr)
         res = abs(xvalsarr - x_pred)
         closest = np.argmin(res)
         closesty = yvalsarr[closest]
-        # closesty = 20
         kappa = 2 * a * (1 + ((2 * a * closesty) + b)**2)**(-1.5)
     else:
+        # Not enough coordinate points to form a parabola
         kappa = 0
+
     return kappa, a, b, c
 
 
 def standardize_line(l):
+    '''
+    Ensure the order returned of points is bottom to top of screen
+    '''
     if l.y1() > l.y2():
         return l.x1(), l.y1(), l.x2(), l.y2()
     else:
@@ -222,27 +234,27 @@ def standardize_line(l):
 
 
 def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, kappa, dt):
-    # goal: use angle as differential ctrl instead of another prop component
-    # also dependent on curvature kappa
+    '''
+    Return PD control value using offset as a proportional and angle as a derivative
+    '''
 
     # Controller Coefficients
     kpo = 2
     kd = 0.3
-    ki = 0.1
+    ki = 0
     kkap = 3
-
-    # kpo = 1.8
-    # kd = 1.6
-    # ki = 0.1
-    # kkap = 2
 
     icap = 0.5
     dt = dt if dt != 0 else 0.025
 
     # Normalize input errors
     e_off = offset / 40  # range -40 to 40
+
     # Eliminate offset error when small
     ignore_off = abs(e_off) <= 0.10
+
+    # Compute integral component
+    integral += e_off * dt
 
     if (ignore_off):
         prop = 0
@@ -263,11 +275,11 @@ def pid_ctrl(offset, angle, previous_error, previous_err_a, integral, kappa, dt)
 
 
 def ThrottleFromSteer(steering_angle):
+    '''
+    Compute throttle percentage as a linear relationship dependant on absolute steering angle.
+    minThrottle is used as a lower bbound and maxThrottle as the upper bound.
+    '''
     absAngle = abs(steering_angle)
-    # AGGRESSIVE BRAKING: If steering is more than 40%, slam on the brakes!
-    # if absAngle > 40:
-    #     return minThrottle
-    # Otherwise, smoothly scale speed down from max
     throttle = maxThrottle - (((maxThrottle - minThrottle) / 40) * absAngle)
     return max(throttle, minThrottle)
 
@@ -275,7 +287,6 @@ def ThrottleFromSteer(steering_angle):
 # ==========================================
 # MAIN LOOP
 # ==========================================
-
 past_off = 0
 past_ang = 0
 integral = 0
@@ -286,11 +297,6 @@ throttle_percent = minThrottle
 last_known_side = "RIGHT"
 last_seen_x = 40
 off_track_flag = "NONE"
-
-# add starting boost
-# car.Throttle(car.FULL_SPEED_FORWARD, kickstartThrottle)
-# time.sleep(KICKSTART_TIME)
-# car.Throttle(car.FULL_SPEED_FORWARD, minThrottle)
 
 while True:
     clock.tick()
@@ -303,9 +309,6 @@ while True:
 
     img.draw_rectangle(TRACKING_ROI, color=127)
 
-    # for i in range(12):
-    #     img.draw_rectangle((0, 5*i, 80, 5), color=100)
-
     line = img.get_regression([(255, 255)], robust=False, roi=TRACKING_ROI)
 
     if line:
@@ -315,26 +318,32 @@ while True:
         last_seen_x = lx1
         is_recovering = False
 
-        # --- THE INSTANT RECOVERY OVERRIDE ---
+        # Recovery Mode
         if off_track_flag == "RIGHT":
+            # On Right Side of Track
             if lx1 > 40:
-                off_track_flag = "NONE"  # Successfully crossed back inside!
+                # Recovery Successful, proceed to Control System
+                off_track_flag = "NONE"
                 last_known_side = "RIGHT"
             else:
+                # Still recovering, hard steer left
                 is_recovering = True
-                car.Steer(car.LEFT, 100)  # Hard lock servo, ignore PID!
+                car.Steer(car.LEFT, 100)
                 car.Throttle(car.FULL_SPEED_FORWARD, blindThrottle)
 
         elif off_track_flag == "LEFT":
+            # On Left Side of Track
             if lx1 < 40:
-                off_track_flag = "NONE"  # Successfully crossed back inside!
+                # Recovery Successful, proceed to Control System
+                off_track_flag = "NONE"
                 last_known_side = "LEFT"
             else:
+                # Still recovering, hard steer right
                 is_recovering = True
-                car.Steer(car.RIGHT, 100)  # Hard lock servo, ignore PID!
+                car.Steer(car.RIGHT, 100)
                 car.Throttle(car.FULL_SPEED_FORWARD, blindThrottle)
 
-        # --- NORMAL HUGGING LOGIC ---
+        # Control System Mode
         if not is_recovering:
             if lx1 < 25:
                 last_known_side = "LEFT"
@@ -350,8 +359,8 @@ while True:
             dy = ly1 - ly2
             deflection_angle = math.atan2(dx, dy)
 
+            # Compute Curvature and Control Values
             kappa, a, b, c = get_curvature(img)
-            # kappa = 0
             control, past_off, integral = pid_ctrl(offset, deflection_angle, past_off, past_ang, integral, kappa, dt)
 
             if abs(control) < 0.08:
@@ -368,7 +377,7 @@ while True:
                 car.Throttle(car.FULL_SPEED_FORWARD, throttle_percent)
 
     else:
-        # 5. NO LINES SEEN (EMERGENCY RECOVERY)
+        # No lines detected, initiate recovery
         integral = 0
 
         if off_track_flag == "NONE":
@@ -377,6 +386,7 @@ while True:
             elif last_seen_x > 65:
                 off_track_flag = "LEFT"
 
+        # Hard steer in the direction of the track based on where it left the screen
         if off_track_flag == "RIGHT":
             car.Steer(car.LEFT, 100)
         elif off_track_flag == "LEFT":
@@ -384,6 +394,7 @@ while True:
         else:
             car.Steer(car.STRAIGHT)
 
+        # Drive at blind speed
         car.Throttle(car.FULL_SPEED_FORWARD, blindThrottle)
 
     FPS = clock.fps()
